@@ -16,3 +16,9 @@ DROP CONSTRAINT IF EXISTS vnindex_prices_pkey;
 ALTER TABLE vnindex_prices
 ADD CONSTRAINT vnindex_prices_pkey
 PRIMARY KEY (date, interval);
+
+CREATE TABLE IF NOT EXISTS users (
+    id SERIAL PRIMARY KEY,
+    username VARCHAR(50) UNIQUE NOT NULL,
+    password_hash VARCHAR(255) NOT NULL
+);

@@ -20,14 +20,7 @@ import stock_prediction_project.config as model_config
 from project.data_pipeline.fetch_data import fetch_vnindex_data
 from project.data_pipeline.preprocess_data import preprocess_vnindex_data
 from project.data_pipeline.store_data import store_vnindex_data
-from project.database.db_config import get_db_engine
-
-import stock_prediction_project.config as model_config
-from project.data_pipeline.fetch_data import fetch_vnindex_data, fetch_stock_data
-from project.data_pipeline.preprocess_data import preprocess_vnindex_data
-from project.data_pipeline.store_data import store_vnindex_data, store_stock_data
-from project.database.db_config import get_db_engine, create_stock_table
-from stock_prediction_project.models.lstm_model import StockLSTM
+from project.database.db_config import get_db_engine, initialize_database
 
 import stock_prediction_project.config as model_config
 from project.data_pipeline.fetch_data import fetch_vnindex_data, fetch_stock_data
@@ -40,7 +33,20 @@ from ui.components.header import render_header
 from ui.components.prediction_panel import render_prediction_panel
 from ui.components.timeframe_selector import filter_by_timeframe, render_timeframe_selector
 from ui.components.training_panel import render_training_panel
+from ui.auth import show_auth_pages
 
+import stock_prediction_project.config as model_config
+from project.data_pipeline.fetch_data import fetch_vnindex_data, fetch_stock_data
+from project.data_pipeline.preprocess_data import preprocess_vnindex_data
+from project.data_pipeline.store_data import store_vnindex_data, store_stock_data
+from project.database.db_config import get_db_engine, create_stock_table
+from stock_prediction_project.models.lstm_model import StockLSTM
+from ui.components.chart import build_price_volume_figure
+from ui.components.header import render_header
+from ui.components.prediction_panel import render_prediction_panel
+from ui.components.timeframe_selector import filter_by_timeframe, render_timeframe_selector
+from ui.components.training_panel import render_training_panel
+from ui.auth import show_auth_pages
 
 FEATURE_COLUMNS = ["open", "high", "low", "close", "volume"]
 ROOT_DIR = Path(__file__).resolve().parents[1]
@@ -178,7 +184,6 @@ def load_live_stock_data(symbol: str = "VNINDEX", interval: str = "5m") -> pd.Da
 
     if data_frame.empty:
         raise RuntimeError(f"Live API returned no usable rows for {symbol}")
-
     return data_frame.tail(5000)
 
 
@@ -344,7 +349,10 @@ def render_pipeline_controls(symbol: str = "VNINDEX") -> None:
             st.sidebar.error(f"Preprocess failed: {exc}")
 
 
-def main() -> None:
+def main_app():
+    """
+    Hàm chứa logic chính của ứng dụng sau khi người dùng đã đăng nhập.
+    """
     load_dotenv(ROOT_DIR / ".env")
 
     st.set_page_config(
@@ -354,11 +362,25 @@ def main() -> None:
     )
 
     inject_styles()
-    
-    # Thêm dòng này: lấy mã cổ phiếu từ sidebar
+
+    st.sidebar.success(f"Welcome, {st.session_state['username']}!")
+    if st.sidebar.button("Logout"):
+        st.session_state['logged_in'] = False
+        st.session_state.pop('username', None)
+        # Clear all caches on logout
+        st.cache_data.clear()
+        st.cache_resource.clear()
+        st.rerun()
+
     symbol = render_symbol_selector()
-    
-    st_autorefresh(interval=60_000, key="stock_dashboard_refresh")
+
+    st.sidebar.markdown("---")
+    col1, col2 = st.sidebar.columns([3, 1])
+    with col1:
+        if 'username' in st.session_state and st.session_state['username']:
+            st.sidebar.markdown(f"👤 **{st.session_state['username']}**")
+    with col2:
+        st_autorefresh(interval=60_000, key="stock_dashboard_refresh")
 
     render_pipeline_controls(symbol)
 
@@ -441,6 +463,30 @@ def main() -> None:
 
     render_training_panel(price_data=price_data, model_path=MODEL_PATH)
 
+def run_app():
+
+    # Load CSS toàn app
+    inject_styles()
+
+    # Session login
+    if 'logged_in' not in st.session_state:
+        st.session_state['logged_in'] = False
+
+    # Nếu chưa login
+    if not st.session_state['logged_in']:
+        show_auth_pages()
+
+    # Nếu đã login
+    else:
+        main_app()
 
 if __name__ == "__main__":
-    main()
+    # Tải biến môi trường LÀ VIỆC ĐẦU TIÊN
+    load_dotenv(ROOT_DIR / ".env")
+    
+    # Khởi tạo database NGAY SAU KHI có biến môi trường
+    # Thao tác này bây giờ sẽ có thông tin đăng nhập chính xác
+    initialize_database()
+    
+    # Chạy ứng dụng
+    run_app()
